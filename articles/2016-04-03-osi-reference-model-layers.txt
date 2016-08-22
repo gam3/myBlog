@@ -1,0 +1,40 @@
+---
+title: OSI Reference Model Layers
+date: 03/04/2016
+
+Here is a very brief overview of the seven network layers.
+
+# Layer 1 (Physical Layer)
+
+An ethernet hub is completely in Layer 1.
+
+# Layer 2 (Data Link Layer)
+
+An ethernet switch is partly in Layer 2 as it must have knowledge of the Media Access Control (MAC) address of packets.
+
+# Layer 3 (Network Layer)
+
+The funtion of routers is at this level.
+
+This is the IP layer.
+
+# Layer 4 (Transport Layer)
+
+Ports are defined at this level.
+
+TCP, UDP, etc reside at this level.
+
+# Layer 5 (Session Layer)
+
+Is a conseptual layer describing sessions.
+
+# Layer 6 (Presentation Layer)
+
+The Secure Sockets Layer (SSL) protocol is defined at this level.
+
+HTTP compression is also handled at this level.
+
+# Layer 7 (Application Layer)
+
+Hypertext Transfer Protocol (HTTP) resides at this level.
+

@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <link rel="stylesheet" type="text/css" href="/css/main.css">
+    <link rel="alternate" type="application/atom+xml" title="<%= title %> - feed" href="/index.xml" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/> 
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+    </script>
+    <script type="text/javascript" async
+      src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_CHTML">
+    </script>
+    <title><%= title %></title>
+  </head>
+  <body>
+ <!--[if !(lt IE 8)]><!-->
+            <script type="text/javascript">
+              (function(){
+                var e = document.createElement('script'); e.type='text/javascript'; e.async = true;
+                e.src = 'https://www.eff.org/ngw/widget.min.js';
+                var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(e, s);
+              })();
+            </script>
+            <!--<![endif]-->
+<div>
+The thoughts of G. Allen Morris III
+<hr/>
+</div>
+    <section>
+      <%= yield %> 
+    </section>
+    <footer>
+      powered by <a href="http://github.com/gam3">gam3</a>
+    </footer>
+  </body>
+</html>
+

@@ -1,0 +1,56 @@
+---
+title: Set up a debian postfix relay host
+date: 14/04/2016
+
+# Overview
+
+Here we have a roaming laptop that we wish to have connect to a relay
+host and send mail over an TLS connection using authentication.
+
+In this case we control both the server and the client. If you are using
+your ISP's relay host this should work. You can just skip the section on
+server setup.
+
+# On the client:
+
+# On the server:
+
+~~~ 
+Install libsasl2-modules, sasl2-bin
+Create a file /etc/postfix/sasl/smtpd.conf:
+pwcheck_method: auxprop
+auxprop_plugin: sasldb
+mech_list: plain login
+Add an user to sasldb2
+ ~# saslpasswd2 -c -u domain user
+ ~# sasldblistusers2
+Postfix needs /etc/sasldb2 in his chroot environment. One solution is to change init script to copy sasldb2 at startup.
+In /etc/init.d/postfix, add etc/sasldb2 in the variable FILES :
+        FILES="etc/localtime etc/services etc/resolv.conf etc/hosts \
+            etc/host.conf etc/nsswitch.conf etc/nss_mdns.config etc/sasldb2"
+Edit Postfix configuration:
+~# postconf -e 'smtpd_sasl_local_domain = $myhostname'
+~# postconf -e 'smtpd_sasl_auth_enable = yes'
+~# postconf -e 'smtpd_sasl_security_options = noanonymous'
+Restart (reloading is not enough) postfix:
+~# service postfix restart
+~# systemctl daemon-reload
+That's it, you're done, everything should work fine now.
+~~~ 
+
+## testing auth plain
+
+
+~~~ 
+perl -MMIME::Base64 -e 'print encode_base64("\000jms1\@jms1.net\000not.my.real.password")'
+
+openssl s_client -starttls smtp -crlf -connect $SMTPHOST:25
+
+220 a.mx.jms1.net NO UCE ESMTP
+ehlo testing
+250-a.mx.jms1.net NO UCE
+250-AUTH LOGIN PLAIN
+250-AUTH=LOGIN PLAIN
+250-PIPELINING
+250 8BITMIME
+~~~ 

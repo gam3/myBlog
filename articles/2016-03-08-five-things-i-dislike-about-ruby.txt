@@ -1,0 +1,14 @@
+title: Five things I dislike about Ruby
+author: G. Allen Morris III
+date: 2016/03/08
+
+
+5. It does not have a line directive see my [pull request](https://github.com/ruby/ruby/pull/911).
+4. The _begin_, _end_ syntax.  I assume this is just from my years of programming in _C_.
+   * Fortunately VIM can mitigate this problem. 
+3. The way the methods are searched for (research this more).
+2. The way Classes are searched.
+1. The Singleton Module.  But I never use it, so no problem there.
+
+
+[1](http://www.ibm.com/developerworks/library/os-sixrubyfeatures/)

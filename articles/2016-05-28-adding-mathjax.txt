@@ -1,0 +1,20 @@
+---
+title: Adding MathJax
+date: 28/05/2016
+
+Once upon a time I wanted to be able to embeb mathematical formulas into my blog pages.  Such as:
+
+$\sum_{n=1}^\inf {1 \over n} = 2$
+
+A very easy way to do this is to use [MathJax](http://docs.mathjax.org/en/latest/start.html) by adding
+
+```html
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+</script>
+<script type="text/javascript" async
+  src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_CHTML">
+</script>
+```
+
+to the &lt;head&gt; section of your web page.

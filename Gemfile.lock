@@ -1,0 +1,14 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    builder (3.2.2)
+    rack (1.6.4)
+    rdiscount (2.1.8)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  builder
+  rack
+  rdiscount
