@@ -1,8 +1,8 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    builder (3.2.2)
-    rack (1.6.4)
+    builder (3.2.3)
+    rack (2.0.3)
     rdiscount (2.1.8)
 
 PLATFORMS
@@ -12,3 +12,6 @@ DEPENDENCIES
   builder
   rack
   rdiscount
+
+BUNDLED WITH
+   1.13.6

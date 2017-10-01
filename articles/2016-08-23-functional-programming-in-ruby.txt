@@ -1,0 +1,6 @@
+---
+title: Functional Programming in Ruby
+date: 23/08/2016
+
+Once upon a time...
+
