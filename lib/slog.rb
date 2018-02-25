@@ -9,25 +9,25 @@ if RUBY_PLATFORM =~ /win32/
   require 'maruku'
   Markdown = Maruku
 else
-#  require 'rdiscount'
+  # require 'rdiscount'
   require 'redcarpet'
-#  Markdown = Kramdown::Document
+  # Markdown = Kramdown::Document
 end
 
 require 'builder'
 
 require 'pp'
 
-$:.unshift File.dirname(__FILE__)
+$LOAD_PATH.unshift File.dirname(__FILE__)
 
 require 'ext/ext'
 
 module Slog
-  Paths = {
+  PATHS = {
     :templates => "templates",
     :pages => "templates/pages",
     :articles => "articles"
-  }
+  }.freeze
 
   def self.env
     ENV['RACK_ENV'] || 'production'
@@ -39,32 +39,35 @@ module Slog
 
   module Template
     def to_html(page, config, &blk)
-      path = ([:layout, :repo].include?(page) ? Paths[:templates] : Paths[:pages])
+      path = ([:layout, :repo].include?(page) ? PATHS[:templates] : PATHS[:pages])
       config[:to_html].call(path, page, binding)
     end
 
     def markdown(text)
       ret = nil
-      if (options = @config[:markdown])
-#         renderer = Redcarpet::Render::HTML.new(options)
-         renderer = Redcarpet::Render::HTML.new(fenced_code_blocks: true)
-pp renderer
-#         markdown = Redcarpet::Markdown.new(renderer, extensions = {})
-         markdown = Redcarpet::Markdown.new(renderer,
-          fenced_code_blocks: true,
-          strikethrough: true,
-          disable_indented_code_blocks: true,
-         )
-pp markdown
-         ret = markdown.render(text.to_s.strip)
+      if @config[:markdown]
+        renderer = Redcarpet::Render::HTML.new(fenced_code_blocks: true)
+        markdown =
+          Redcarpet::Markdown.new(
+            renderer,
+            fenced_code_blocks: true,
+            strikethrough: true,
+            disable_indented_code_blocks: true
+          )
+
+        ret = markdown.render(text.to_s.strip)
       else
         ret = text.strip
       end
       ret
     end
 
+    def respond_to_missing?
+      true
+    end
+
     def method_missing(m, *args, &blk)
-      self.keys.include?(m) ? self[m] : super
+      keys.include?(m) ? self[m] : super
     end
 
     def self.included(obj)
@@ -88,25 +91,25 @@ pp markdown
     end
 
     def index(type = :html)
-      articles = type == :html ? self.articles.reverse : self.articles
-      {:articles => articles.map do |article|
+      ordered_article = type == :html ? articles.reverse : articles
+      { :articles => ordered_article.map do |article|
         Article.new article, @config
-      end}.merge archives
+      end }.merge archives
     end
 
     def archives(filter = "")
-      entries = ! self.articles.empty??
-        self.articles.select do |a|
-          filter !~ /^\d{4}/ || File.basename(a) =~ /^#{filter}/
-        end.reverse.map do |article|
-          Article.new article, @config
-        end : []
+      if articles.empty?
+        entries = []
+      else
+        entries = articles.select { |a| filter !~ /^\d{4}/ || File.basename(a) =~ /^#{filter}/ }
+                          .reverse.map { |article| Article.new article, @config }
+      end
 
-      return :archives => Archives.new(entries, @config)
+      { :archives => Archives.new(entries, @config) }
     end
 
     def article(route)
-      Article.new("#{Paths[:articles]}/#{route.join('-')}.#{self[:ext]}", @config).load
+      Article.new("#{PATHS[:articles]}/#{route.join('-')}.#{self[:ext]}", @config).load
     end
 
     def /
@@ -115,60 +118,65 @@ pp markdown
 
     def go(route, env = {}, type = :html)
       route << self./ if route.empty?
-      type, path = type =~ /html|xml|json/ ? type.to_sym : :html, route.join('/')
+      type = type =~ /html|xml|json/ ? type.to_sym : :html
+      path = route.join('/')
 
-      context = lambda do |data, page|
-        Context.new(data, @config, path, env).render(page, type)
-      end
+      context = ->(data, page) { Context.new(data, @config, path, env).render(page, type) }
 
-      body, status = if Context.new.respond_to?(:"to_#{type}")
-        if route.first =~ /\d{4}/
-          case route.size
+      body, status =
+        if Context.new.respond_to?(:"to_#{type}")
+          if route.first =~ /\d{4}/
+            case route.size
             when 1..3
               context[archives(route * '-'), :archives]
             when 4
               context[article(route), :article]
             else http 400
+            end
+          elsif respond_to?(path)
+            context[send(path, type), path.to_sym]
+          elsif (repo = @config[:github][:repos].grep(/#{path}/).first) &&
+                !@config[:github][:user].empty?
+            context[Repo.new(repo, @config), :repo]
+          else
+            context[{}, path.to_sym]
           end
-        elsif respond_to?(path)
-          context[send(path, type), path.to_sym]
-        elsif (repo = @config[:github][:repos].grep(/#{path}/).first) &&
-              !@config[:github][:user].empty?
-          context[Repo.new(repo, @config), :repo]
         else
-          context[{}, path.to_sym]
+          http 400
         end
-      else
-        http 400
-      end
-
-    rescue Errno::ENOENT => e
+    rescue Errno::ENOENT
       return :body => http(404).first, :type => :html, :status => 404
     else
       return :body => body || "", :type => type, :status => status || 200
     end
 
-  protected
+    protected
 
     def http(code)
-STDERR.puts "code: #{code}"
       [@config[:error].call(code), code]
     end
 
-    def articles()
+    def articles
       self.class.articles self[:ext]
     end
 
-    def self.articles(ext)
-      Dir["#{Paths[:articles]}/*.#{ext}"].sort_by {|entry| File.basename(entry) }
+    class << self
+      protected
+
+      def articles(ext)
+        Dir["#{PATHS[:articles]}/*.#{ext}"].sort_by { |entry| File.basename(entry) }
+      end
     end
 
     class Context
       include Template
       attr_reader :env
 
-      def initialize ctx = {}, config = {}, path = "/", env = {}
-        @config, @context, @path, @env = config, ctx, path, env
+      def initialize(ctx = {}, config = {}, path = "/", env = {})
+        @config  = config
+        @context = ctx
+        @path    = path
+        @env     = env
         @articles = Site.articles(@config[:ext]).reverse.map do |a|
           Article.new(a, @config)
         end
@@ -184,14 +192,18 @@ STDERR.puts "code: #{code}"
 
       def render(page, type)
         content = to_html page, @config
-        type == :html ? to_html(:layout, @config, &Proc.new { content }) : send(:"to_#{type}", page)
+        type == :html ? to_html(:layout, @config, proc { content }) : send(:"to_#{type}", page)
       end
 
       def to_xml(page)
-        xml = Builder::XmlMarkup.new(:indent => 2)
-        instance_eval File.read("#{Paths[:templates]}/#{page}.builder")
+        # Builder::XmlMarkup.new(:indent => 2)
+        instance_eval File.read("#{PATHS[:templates]}/#{page}.builder")
       end
       alias :to_atom to_xml
+
+      def respond_to_missing?
+        true
+      end
 
       def method_missing(m, *args, &blk)
         @context.respond_to?(m) ? @context.send(m, *args, &blk) : super
@@ -202,16 +214,16 @@ STDERR.puts "code: #{code}"
   class Repo < Hash
     include Template
 
-    README = "https://github.com/%s/%s/raw/master/README.%s"
+    README = "https://github.com/%s/%s/raw/master/README.%s".freeze
 
-    def initialize name, config
-      self[:name], @config = name, config
+    def initialize(name, config)
+      self[:name] = name
+      @config = config
     end
 
     def readme
-      markdown open(README %
-        [@config[:github][:user], self[:name], @config[:github][:ext]]).read
-    rescue Timeout::Error, OpenURI::HTTPError => e
+      markdown open(README.format([@config[:github][:user], self[:name], @config[:github][:ext]])).read
+    rescue Timeout::Error, OpenURI::HTTPError
       "This page isn't available."
     end
     alias :content readme
@@ -220,13 +232,13 @@ STDERR.puts "code: #{code}"
   class Archives < Array
     include Template
 
-    def initialize articles, config
-      self.replace articles
+    def initialize(articles, config)
+      replace articles
       @config = config
     end
 
-    def [] a
-      a.is_a?(Range) ? self.class.new(self.slice(a) || [], @config) : super
+    def [](a)
+      a.is_a?(Range) ? self.class.new(slice(a) || [], @config) : super
     end
 
     def to_html
@@ -240,101 +252,124 @@ STDERR.puts "code: #{code}"
     include Template
 
     def initialize(obj, config = {})
-      @obj, @config = obj, config
-      self.load if obj.is_a? Hash
+      @obj = obj
+      @config = config
+      load if obj.is_a? Hash
     end
 
-    def load()
-      data = if @obj.is_a? String
-        begin
-	  meta, self[:body] = File.read(@obj).split(/\n\n/, 2)
-	rescue => error
-	  STDERR.puts "THIS IS AN ERROR: \"#{error}\""
-	end
+    def load
+      data =
+        if @obj.is_a? String
+          begin
+            meta, self[:body] = File.read(@obj).split(/\n\n/, 2)
+          rescue => error
+            STDERR.puts "THIS IS AN ERROR: \"#{error}\""
+          end
 
-        # use the date from the filename, or else toto won't find the article
-        @obj =~ /\/(\d{4}-\d{2}-\d{2})[^\/]*$/
-        ($1 ? {:date => $1} : {}).merge(YAML.load(meta))
-      elsif @obj.is_a? Hash
-        @obj
-      end.inject({}) {|h, (k,v)| h.merge(k.to_sym => v) }
+          # use the date from the filename, or else toto won't find the article
+          match = @obj.match(%r{/(\d{4}-\d{2}-\d{2})[^/]*$})
+          (match[1] ? { :date => match[1] } : {}).merge(YAML.load(meta))
+        elsif @obj.is_a? Hash
+          @obj
+        end.inject({}) { |h, (k, v)| h.merge(k.to_sym => v) }
 
-      self.taint
-      self.update data
-      self[:date] = Date.parse(self[:date].gsub('/', '-')) rescue Date.today
+      taint
+      update data
+      begin
+        self[:date] = Date.parse(self[:date].tr('/', '-'))
+      rescue
+        Date.today
+      end
       self
     end
 
     def [](key)
-      self.load unless self.tainted?
+      load unless tainted?
       super
     end
 
-    def slug()
+    def slug
       self[:slug] || self[:title].slugize
     end
 
-    def summary( length = nil )
+    def summary(length = nil)
       config = @config[:summary]
-      sum = if self[:body] =~ config[:delim]
-        self[:body].split(config[:delim]).first
-      else
-        self[:body].match(/(.{1,#{length || config[:length] || config[:max]}}.*?)(\n|\Z)/m).to_s
-      end
+      sum =
+        if self[:body] =~ config[:delim]
+          self[:body].split(config[:delim]).first
+        else
+          self[:body].match(/(.{1,#{length || config[:length] || config[:max]}}.*?)(\n|\Z)/m).to_s
+        end
       markdown(sum.length == self[:body].length ? sum : sum.strip.sub(/\.\Z/, '&hellip;'))
     end
 
-    def url()
-      "http://#{(@config[:url].sub("http://", '') + self.path).squeeze('/')}"
+    def url
+      "http://#{(@config[:url].sub('http://', '') + path).squeeze('/')}"
     end
     alias :permalink url
 
-    def body()
-      markdown self[:body].sub(@config[:summary][:delim], '') rescue markdown self[:body]
+    def body
+      markdown self[:body].sub(@config[:summary][:delim], '')
+    rescue
+      markdown self[:body]
     end
 
-    def path()
+    def path
       "/#{@config[:prefix]}#{self[:date].strftime("/%Y/%m/%d/#{slug}/")}".squeeze('/')
     end
 
-    def title()   self[:title] || "an article"               end
-    def date()    @config[:date].call(self[:date])           end
-    def author()  self[:author] || @config[:author]          end
-    def to_html() self.load; super(:article, @config)        end
+    def title
+      self[:title] || "an article"
+    end
+
+    def date
+      @config[:date].call(self[:date])
+    end
+
+    def author
+      self[:author] || @config[:author]
+    end
+
+    def to_html
+      load
+      super(:article, @config)
+    end
+
     alias :to_s to_html
   end
 
   class Config < Hash
-    Defaults = {
-      :author => ENV['USER'],                               # blog author
-      :title => Dir.pwd.split('/').last,                    # site title
-      :root => "index",                                     # site index
-      :url => "http://127.0.0.1",                           # root URL of the site
-      :prefix => "",                                        # common path prefix for the blog
-      :date => lambda {|now| now.strftime("%d/%m/%Y") },    # date function
-      :markdown => Hash.new,                         # use markdown
-      :disqus => false,                                     # disqus name
-      :summary => {:max => 150, :delim => /~\n/},           # length of summary and delimiter
-      :ext => 'txt',                                        # extension for articles
-      :cache => 28800,                                      # cache duration (seconds)
-      :github => {:user => "", :repos => [], :ext => 'md'}, # Github username and list of repos
-      :to_html => lambda {|path, page, ctx|                 # returns an html, from a path & context
+    DEFAULTS = {
+      :author => ENV['USER'],                                 # blog author
+      :title => Dir.pwd.split('/').last,                      # site title
+      :root => "index",                                       # site index
+      :url => "http://127.0.0.1",                             # root URL of the site
+      :prefix => "",                                          # common path prefix for the blog
+      :date => ->(now) { now.strftime("%d/%m/%Y") },          # date function
+      :markdown => Hash.new,                                  # use markdown
+      :disqus => false,                                       # disqus name
+      :summary => { :max => 150, :delim => /~\n/ },           # length of summary and delimiter
+      :ext => 'txt',                                          # extension for articles
+      :cache => 28_800,                                       # cache duration (seconds)
+      :github => { :user => "", :repos => [], :ext => 'md' }, # Github username and list of repos
+      :to_html => lambda do |path, page, ctx|                 # returns an html, from a path & context
         ERB.new(File.read("#{path}/#{page}.rhtml")).result(ctx)
-      },
-      :error => lambda {|code|                              # The HTML for your error page
+      end,
+      :error => lambda do |code|                              # The HTML for your error page
         "<font style='font-size:300%'>toto, we're not in Kansas anymore (#{code})</font>"
-      }
-    }
+      end
+    }.freeze
+
     def initialize(obj)
-      self.update Defaults
-      self.update obj
+      update DEFAULTS
+      update obj
     end
 
     def set(key, val = nil, &blk)
       if val.is_a? Hash
         self[key].update val
       else
-        self[key] = block_given?? blk : val
+        self[key] = block_given? ? blk : val
       end
     end
   end
@@ -355,7 +390,7 @@ STDERR.puts "code: #{code}"
       return [400, {}, []] unless @request.get?
 
       path, mime = @request.path_info.split('.')
-      route = (path || '/').split('/').reject {|i| i.empty? }
+      route = (path || '/').split('/').reject(&:empty?)
 
       response = @site.go(route, env, *(mime ? mime : []))
 
@@ -364,11 +399,12 @@ STDERR.puts "code: #{code}"
       @response['Content-Type']   = Rack::Mime.mime_type(".#{response[:type]}")
 
       # Set http cache headers
-      @response['Cache-Control'] = if Slog.env == 'production'
-        "public, max-age=#{@config[:cache]}"
-      else
-        "no-cache, must-revalidate"
-      end
+      @response['Cache-Control'] =
+        if Slog.env == 'production'
+          "public, max-age=#{@config[:cache]}"
+        else
+          "no-cache, must-revalidate"
+        end
 
       @response['ETag'] = %("#{Digest::SHA1.hexdigest(response[:body])}")
 
@@ -378,3 +414,4 @@ STDERR.puts "code: #{code}"
   end
 end
 
+__END__
